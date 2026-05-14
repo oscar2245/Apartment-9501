@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", sans-serif;
+}
+
+@layer base {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+@media print {
+  aside {
+    display: none !important;
+  }
+  
+  main {
+    padding: 0 !important;
+    background: white !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  button, .no-print {
+    display: none !important;
+  }
+
+  .shadow-sm, .shadow-lg, .shadow-xl {
+    shadow: none !important;
+    border: 1px solid #eee !important;
+  }
+
+  body {
+    background-color: white !important;
+  }
+
+  /* Reset layout for print */
+  .h-screen {
+    height: auto !important;
+  }
+}
