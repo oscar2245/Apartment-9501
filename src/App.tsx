@@ -18,6 +18,7 @@ import {
   Phone,
   Printer,
   Download,
+  Upload,
   Trash2,
   ChevronLeft,
   ChevronRight,
@@ -2507,12 +2508,30 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="p-6 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/20">
-            <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2">استيراد بيانات خارجية</h4>
-            <p className="text-sm text-blue-600 dark:text-blue-400 mb-4 font-medium">استيراد سجلات المدفوعات من ملف Excel قديم (رقم الشقة، الشهر، المدفوع)</p>
-            <label className="inline-block px-6 py-2 bg-blue-600 text-white rounded-xl font-bold cursor-pointer hover:bg-blue-700 transition-all text-sm">
-              <Download size={16} className="inline ml-2" /> اختيار ملف Excel
-              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileChange} />
-            </label>
+            <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2">سجلات التقارير (Excel / PDF)</h4>
+            <p className="text-sm text-blue-600 dark:text-blue-400 mb-4 font-medium">استيراد أو تصدير سجلات العقار بالكامل لملف خارجي</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="px-3 py-2 bg-blue-600 text-white rounded-xl font-bold cursor-pointer hover:bg-blue-700 transition-all text-xs flex items-center justify-center shadow-sm">
+                <Upload size={14} className="ml-2" /> استيراد Excel
+                <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileChange} />
+              </label>
+              <button 
+                onClick={onExportAll}
+                className="px-3 py-2 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl font-bold hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-all text-xs flex items-center justify-center shadow-sm"
+              >
+                <Download size={14} className="ml-2" /> تصدير Excel
+              </button>
+              <label className="px-3 py-2 bg-red-600/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-xl font-bold cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/30 transition-all text-xs flex items-center justify-center shadow-sm">
+                <Printer size={14} className="ml-2" /> استيراد PDF
+                <input type="file" accept=".pdf" className="hidden" onChange={() => alert('خاصية استيراد PDF قيد التطوير')} />
+              </label>
+              <button 
+                onClick={onExportPDF}
+                className="px-3 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all text-xs flex items-center justify-center shadow-sm"
+              >
+                <Printer size={14} className="ml-2" /> تصدير PDF
+              </button>
+            </div>
           </div>
 
           <div className="p-6 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/20">
@@ -2563,18 +2582,6 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
             className="px-8 py-3 bg-blue-600 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/40"
            >
              حفظ التغييرات
-           </button>
-           <button 
-            onClick={onExportAll}
-            className="px-6 py-3 bg-gray-800 dark:bg-gray-700 rounded-xl font-bold hover:bg-gray-700 transition-all border border-gray-700 flex items-center gap-2"
-           >
-             <Download size={18} /> تصدير (Excel)
-           </button>
-           <button 
-            onClick={onExportPDF}
-            className="px-6 py-3 bg-red-800 dark:bg-red-900/40 rounded-xl font-bold hover:bg-red-700 transition-all border border-red-700 flex items-center gap-2"
-           >
-             <Printer size={18} /> تصدير (PDF)
            </button>
          </div>
          <button 
