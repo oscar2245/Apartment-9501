@@ -32,7 +32,14 @@ import {
   Check,
   TrendingDown,
   TrendingUp,
-  Filter
+  Filter,
+  MessageSquare,
+  Wallet,
+  Activity,
+  User,
+  Briefcase,
+  IdCard,
+  Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -133,11 +140,14 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<string>("dashboard");
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>(storage.getExpenses());
+  const [emergencyFund, setEmergencyFund] = useState(storage.getEmergencyFund());
   const [settings, setSettings] = useState<BuildingSettings>(storage.getSettings());
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [quickPayConfirm, setQuickPayConfirm] = useState<{ aptId: string, month: string, amount: number, unitNumber: string, residentName: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -192,6 +202,10 @@ export default function App() {
   useEffect(() => {
     storage.saveExpenses(expenses);
   }, [expenses]);
+
+  useEffect(() => {
+    storage.saveEmergencyFund(emergencyFund);
+  }, [emergencyFund]);
 
   const handleSaveSettings = (newSettings: BuildingSettings) => {
     setSettings(newSettings);
@@ -296,18 +310,18 @@ export default function App() {
     }, 0);
     const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
     
-    return { balanceTrend, totalIncomes, totalExpenses, netBalance: totalIncomes - totalExpenses };
-  }, [apartments, expenses]);
+    return { balanceTrend, totalIncomes, totalExpenses, netBalance: totalIncomes - totalExpenses - emergencyFund.balance };
+  }, [apartments, expenses, emergencyFund]);
 
   // --- ACTIONS ---
 
   const registerPayment = (aptId: string, payment: Payment) => {
     setApartments(prev => prev.map(apt => {
       if (apt.id === aptId) {
-        const existingPaymentIdx = apt.payments.findIndex(p => p.month === payment.month);
+        const existingIdx = apt.payments.findIndex(p => p.month === payment.month);
         const newPayments = [...apt.payments];
-        if (existingPaymentIdx >= 0) {
-          newPayments[existingPaymentIdx] = payment;
+        if (existingIdx >= 0) {
+          newPayments[existingIdx] = payment;
         } else {
           newPayments.push(payment);
         }
@@ -315,7 +329,44 @@ export default function App() {
       }
       return apt;
     }));
+    
     setIsPaymentModalOpen(false);
+    setQuickPayConfirm(null);
+    
+    // Toast notification
+    const apt = apartments.find(a => a.id === aptId);
+    setToast({
+      message: lang === 'ar' 
+        ? `تم تسجيل دفع مبلغ ${payment.amountPaid} ج.م للشقة ${apt?.unitNumber} بنجاح.`
+        : `Payment of ${payment.amountPaid} EGP for Apt ${apt?.unitNumber} registered successfully.`,
+      type: 'success'
+    });
+    
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const initiateQuickPay = (aptId: string, unitNumber: string, residentName: string, amount: number) => {
+    setQuickPayConfirm({
+      aptId,
+      unitNumber,
+      residentName,
+      month: currentMonth,
+      amount
+    });
+  };
+
+  const executeQuickPay = (confirmData: typeof quickPayConfirm) => {
+    if (!confirmData) return;
+    
+    registerPayment(confirmData.aptId, {
+      id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      month: confirmData.month,
+      amountDue: confirmData.amount,
+      amountPaid: confirmData.amount,
+      paymentMethod: PaymentMethod.CASH,
+      paymentDate: new Date().toISOString().split('T')[0],
+      reason: lang === 'ar' ? "اشتراك شهري (دفع سريع)" : "Monthly subscription (Quick Pay)"
+    });
   };
 
   // --- NAVIGATION ---
@@ -369,6 +420,8 @@ export default function App() {
       payments: [],
       moveInDate: startOfCurrentMonth
     })));
+    setExpenses([]);
+    setEmergencyFund({ balance: 0, transactions: [] });
   };
 
   const resetApartmentDebt = (id: string) => {
@@ -596,10 +649,11 @@ export default function App() {
         <div className="flex-1 px-3 space-y-2 mt-6 overflow-y-auto custom-scrollbar">
           <NavItem id="dashboard" icon={LayoutDashboard} label={t.dashboard} />
           <NavItem id="apartments" icon={Building2} label={t.apartments} />
+          <NavItem id="income" icon={Wallet} label={lang === 'ar' ? 'الإيرادات' : 'Income'} />
+          <NavItem id="emergency-fund" icon={AlertCircle} label={lang === 'ar' ? 'صندوق الطوارئ' : 'Emergency Fund'} />
           <NavItem id="payments" icon={CreditCard} label={t.expenses} />
-          <NavItem id="add-apartment" icon={Plus} label={t.addApartment} />
           <NavItem id="monthly-report" icon={FileText} label={lang === 'ar' ? 'الكشف الشهري' : 'Monthly Report'} />
-          <NavItem id="debts-report" icon={AlertCircle} label={lang === 'ar' ? 'تقرير المديونيات' : 'Debts Report'} />
+          <NavItem id="debts-report" icon={AlertTriangle} label={lang === 'ar' ? 'تقرير المديونيات' : 'Debts Report'} />
           <NavItem id="settings" icon={SettingsIcon} label={t.settings} />
         </div>
 
@@ -661,9 +715,11 @@ export default function App() {
               <DashboardView 
                 stats={stats} 
                 balanceStats={balanceStats}
+                emergencyFund={emergencyFund}
                 apartments={apartments} 
                 currentMonth={currentMonth}
                 onAptClick={(id: string) => { setSelectedAptId(id); setActiveScreen("apartment-detail"); }}
+                onQuickPay={initiateQuickPay}
                 lang={lang}
                 t={t}
               />
@@ -676,6 +732,27 @@ export default function App() {
                 currentMonth={currentMonth}
                 onAptClick={(id) => { setSelectedAptId(id); setActiveScreen("apartment-detail"); }}
                 onUpdateApt={updateApartment}
+                onQuickPay={initiateQuickPay}
+                lang={lang}
+                t={t}
+              />
+            )}
+            {activeScreen === "income" && (
+              <IncomeView 
+                apartments={apartments}
+                expenses={expenses}
+                emergencyFund={emergencyFund}
+                lang={lang}
+                t={t}
+              />
+            )}
+            {activeScreen === "emergency-fund" && (
+              <EmergencyFundView 
+                emergencyFund={emergencyFund}
+                onUpdateFund={(newFund: any) => setEmergencyFund(newFund)}
+                totalIncomes={balanceStats.totalIncomes}
+                totalExpenses={balanceStats.totalExpenses}
+                netBalance={balanceStats.netBalance}
                 lang={lang}
                 t={t}
               />
@@ -683,6 +760,7 @@ export default function App() {
             {activeScreen === "payments" && (
               <ExpensesView 
                 expenses={expenses} 
+                apartments={apartments}
                 onAdd={(exp: Expense) => setExpenses(prev => [exp, ...prev])}
                 onDelete={(id: string) => setExpenses(prev => prev.filter(e => e.id !== id))}
                 lang={lang}
@@ -719,6 +797,7 @@ export default function App() {
             {activeScreen === "monthly-report" && (
               <MonthlyReportView 
                 apartments={apartments} 
+                emergencyFund={emergencyFund}
                 currentMonth={currentMonth}
                 setCurrentMonth={setCurrentMonth}
                 settings={settings}
@@ -767,13 +846,89 @@ export default function App() {
           t={t}
         />
       )}
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={cn(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border transition-colors",
+              toast.type === 'success' 
+                ? "bg-green-600 border-green-500 text-white" 
+                : "bg-red-600 border-red-500 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+            <span className="font-bold text-sm">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="ml-2 hover:bg-white/20 p-1 rounded-lg transition-colors">
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick Pay Confirmation Modal */}
+      <AnimatePresence>
+        {quickPayConfirm && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-gray-900/60 dark:bg-black/80 backdrop-blur-sm"
+              onClick={() => setQuickPayConfirm(null)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-900 w-full max-w-md rounded-3xl shadow-2xl z-10 overflow-hidden text-right p-8 space-y-6 border border-gray-100 dark:border-gray-800"
+            >
+              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <CreditCard size={32} />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">
+                  {lang === 'ar' ? 'تأكيد الدفع السريع' : 'Confirm Quick Pay'}
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {lang === 'ar' 
+                    ? `هل أنت متأكد من تسجيل دفع مبلغ ${quickPayConfirm.amount} ج.م لشهر ${format(parseISO(quickPayConfirm.month + "-01"), "MMMM yyyy", { locale: ar })}؟`
+                    : `Are you sure you want to register a payment of ${quickPayConfirm.amount} EGP for ${format(parseISO(quickPayConfirm.month + "-01"), "MMMM yyyy", { locale: enUS })}?`}
+                  <br />
+                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                    {lang === 'ar' ? `الشقة ${quickPayConfirm.unitNumber} - ${quickPayConfirm.residentName}` : `Apt ${quickPayConfirm.unitNumber} - ${quickPayConfirm.residentName}`}
+                  </span>
+                </p>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={() => executeQuickPay(quickPayConfirm)}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20"
+                >
+                  {lang === 'ar' ? 'نعم، تسجيل الدفع' : 'Yes, Register Payment'}
+                </button>
+                <button 
+                  onClick={() => setQuickPayConfirm(null)}
+                  className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-3 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {t.cancel}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // --- SUB-COMPONENTS ---
 
-function DashboardView({ stats, balanceStats, apartments, currentMonth, onAptClick, lang, t }: any) {
+function DashboardView({ stats, balanceStats, emergencyFund, apartments, currentMonth, onAptClick, onQuickPay, lang, t }: any) {
   const overdueApts = apartments.filter((apt: Apartment) => {
     const p = apt.payments.find(p => p.month === currentMonth);
     return !p || p.amountPaid < apt.monthlyFee;
@@ -793,7 +948,7 @@ function DashboardView({ stats, balanceStats, apartments, currentMonth, onAptCli
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <StatCard 
           label={t.totalRevenue} 
           value={`${balanceStats.totalIncomes.toLocaleString()} ${lang === 'ar' ? 'ج.م' : 'EGP'}`} 
@@ -821,6 +976,13 @@ function DashboardView({ stats, balanceStats, apartments, currentMonth, onAptCli
           subLabel={lang === 'ar' ? 'مديونيات لم تُحصل بعد' : 'Uncollected debts'}
           icon={AlertCircle}
           color="bg-orange-50 dark:bg-orange-900/10 text-orange-600"
+        />
+        <StatCard 
+          label={lang === 'ar' ? 'صندوق الطوارئ' : 'Emergency Fund'} 
+          value={`${emergencyFund.balance.toLocaleString()} ${lang === 'ar' ? 'ج.م' : 'EGP'}`} 
+          subLabel={lang === 'ar' ? 'رصيد الحالات الطارئة' : 'Emergency situation balance'}
+          icon={AlertCircle}
+          color="bg-amber-50 dark:bg-amber-900/10 text-amber-600"
         />
       </div>
 
@@ -890,17 +1052,32 @@ function DashboardView({ stats, balanceStats, apartments, currentMonth, onAptCli
           <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100">{lang === 'ar' ? 'متأخرات الشهر الحالي' : 'Current Month Arrears'}</h3>
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             {overdueApts.map((apt: Apartment) => (
-              <button 
+              <div 
                 key={apt.id} 
                 onClick={() => onAptClick(apt.id)}
-                className={cn("w-full p-3 rounded-xl border border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 transition-all group", lang === 'ar' ? "text-right" : "text-left")}
+                className={cn("w-full p-3 rounded-xl border border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 transition-all group cursor-pointer", lang === 'ar' ? "text-right" : "text-left")}
               >
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'شقة' : 'Apt'} {apt.unitNumber}</span>
-                  <span className="text-xs text-red-500 font-bold bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full group-hover:bg-red-100 dark:group-hover:bg-red-900/40 transition-colors">{lang === 'ar' ? 'مطلوب' : 'Due'} {apt.monthlyFee} {lang === 'ar' ? 'ج.م' : 'EGP'}</span>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-gray-700 dark:text-gray-200">{lang === 'ar' ? 'شقة' : 'Apt'} {apt.unitNumber}</span>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{apt.residentName}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="text-xs text-red-500 font-bold bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full group-hover:bg-red-100 dark:group-hover:bg-red-900/40 transition-colors uppercase tracking-tighter">
+                      {lang === 'ar' ? 'مطلوب' : 'Due'} {apt.monthlyFee} {lang === 'ar' ? 'ج.م' : 'EGP'}
+                    </span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onQuickPay(apt.id, apt.unitNumber, apt.residentName, apt.monthlyFee);
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white rounded-lg text-[9px] font-black uppercase tracking-tighter hover:bg-blue-700 transition-all shadow-sm flex items-center justify-center gap-1 active:scale-95"
+                    >
+                      <CreditCard size={10} /> {lang === 'ar' ? "دفع سريع" : "Quick Pay"}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{apt.residentName}</p>
-              </button>
+              </div>
             ))}
             {overdueApts.length === 0 && (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400 text-center">
@@ -930,7 +1107,7 @@ function StatCard({ label, value, subLabel, icon: Icon, color }: any) {
   );
 }
 
-function ApartmentsGridView({ apartments, searchTerm, setSearchTerm, currentMonth, onAptClick, onUpdateApt, lang, t }: any) {
+function ApartmentsGridView({ apartments, searchTerm, setSearchTerm, currentMonth, onAptClick, onUpdateApt, onQuickPay, lang, t }: any) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [editingAptId, setEditingAptId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Apartment>>({});
@@ -1181,6 +1358,20 @@ function ApartmentsGridView({ apartments, searchTerm, setSearchTerm, currentMont
                         {isPaid ? <Check size={12} strokeWidth={4} /> : isPartial ? <Clock size={12} strokeWidth={3} /> : <AlertTriangle size={12} strokeWidth={3} />}
                         {isPaid ? (lang === 'ar' ? "تم التحصيل" : "Collected") : isPartial ? (lang === 'ar' ? "تحصيل جزئي" : "Partial") : t.unpaid}
                       </div>
+
+                      {!isPaid && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onQuickPay(apt.id, apt.unitNumber, apt.residentName, apt.monthlyFee);
+                          }}
+                          className="px-4 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter hover:bg-blue-700 transition-all shadow-sm flex items-center justify-center gap-1 active:scale-95"
+                          title={lang === 'ar' ? "دفع سريع" : "Quick Pay"}
+                        >
+                          <CreditCard size={12} /> {lang === 'ar' ? "دفع سريع" : "Quick Pay"}
+                        </button>
+                      )}
+
                       <button 
                         onClick={(e) => startEditing(e, apt)}
                         className="px-3 bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl transition-colors"
@@ -1215,6 +1406,7 @@ function ApartmentsGridView({ apartments, searchTerm, setSearchTerm, currentMont
 function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, onDelete, onUpdate, onResetDebt, lang, t }: any) {
   const [isEditing, setIsEditing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState(apartment);
   
   // Filtering state
@@ -1315,6 +1507,59 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
             </motion.div>
           </div>
         )}
+
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-gray-900/60 dark:bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-900 w-full max-w-md rounded-3xl shadow-2xl z-10 overflow-hidden text-right p-8 space-y-6 transition-colors border border-gray-100 dark:border-gray-800"
+            >
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">
+                  {lang === 'ar' ? 'تأكيد حذف الشقة' : 'Confirm Apartment Deletion'}
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {lang === 'ar' 
+                    ? `هل أنت متأكد من حذف الشقة رقم ${apartment.unitNumber} الخاصة بـ ${apartment.residentName} نهائياً؟` 
+                    : `Are you sure you want to permanently delete apartment #${apartment.unitNumber} belonging to ${apartment.residentName}?`}
+                  <br />
+                  <span className="text-sm font-medium text-red-500 dark:text-red-400">
+                    {lang === 'ar' ? 'سيتم مسح جميع سجلات هذه الشقة ولا يمكن التراجع عن هذا الإجراء.' : 'All records for this apartment will be erased and this action cannot be undone.'}
+                  </span>
+                </p>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={() => {
+                    onDelete(apartment.id);
+                    setShowDeleteConfirm(false);
+                  }}
+                  className="flex-1 bg-red-600 text-white py-3 rounded-2xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
+                >
+                  {lang === 'ar' ? 'نعم، حذف الآن' : 'Yes, Delete Now'}
+                </button>
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-3 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {t.cancel}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-6">
@@ -1342,11 +1587,7 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
             <FileText size={20} /> PDF (Print)
           </button>
           <button 
-            onClick={() => {
-              if (confirm(lang === 'ar' ? "هل أنت متأكد من حذف هذه الشقة نهائياً؟" : "Are you sure you want to delete this apartment permanently?")) {
-                onDelete(apartment.id);
-              }
-            }}
+            onClick={() => setShowDeleteConfirm(true)}
             className="flex items-center gap-2 px-6 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold shadow-sm hover:bg-red-100 transition-all"
           >
             <Trash2 size={20} /> {lang === 'ar' ? 'حذف الشقة' : 'Delete Apt'}
@@ -1362,69 +1603,135 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Info Card */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-8 transition-colors relative">
+        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl shadow-gray-200/50 dark:shadow-black/20 border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors relative">
           {!isEditing && (
             <button 
               onClick={() => setIsEditing(true)}
-              className="absolute top-4 left-4 p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="absolute top-6 left-6 p-3 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-2xl transition-all shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 z-10"
               title="تعديل البيانات"
             >
               <SettingsIcon size={20} />
             </button>
           )}
 
-          <div className="text-center mb-8">
-            <div className="w-24 h-24 rounded-3xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4 font-black text-4xl transition-colors">
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-center text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-400/20 rounded-full -ml-12 -mb-12 blur-xl" />
+            
+            <div className="w-24 h-24 rounded-3xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center mx-auto mb-6 font-black text-4xl shadow-xl border border-white/30 relative z-10">
               {apartment.unitNumber}
             </div>
             {isEditing ? (
               <div className="space-y-4 text-right">
-                <InputGroup label="اسم الساكن" value={editForm.residentName} onChange={(v: string) => setEditForm({...editForm, residentName: v})} />
+                <InputGroup label={lang === 'ar' ? "اسم الساكن" : "Resident Name"} value={editForm.residentName} onChange={(v: string) => setEditForm({...editForm, residentName: v})} className="bg-white/10 border-white/20 text-white placeholder-white/50" />
               </div>
             ) : (
-              <>
-                <h3 className="text-2xl font-black text-gray-800 dark:text-gray-100 transition-colors">{apartment.residentName}</h3>
-                <p className="text-gray-400 dark:text-gray-500 transition-colors">{lang === 'ar' ? 'ساكن' : 'Resident'} - {t.floor} {apartment.floor}</p>
-              </>
+              <div className="relative z-10">
+                <h3 className="text-2xl font-black mb-1">{apartment.residentName}</h3>
+                <div className="flex items-center justify-center gap-2 text-blue-100/80 font-bold text-sm">
+                  <Building2 size={14} />
+                  <span>{lang === 'ar' ? 'الطابق' : 'Floor'} {apartment.floor}</span>
+                  <span className="w-1 h-1 bg-blue-100/40 rounded-full" />
+                  <span>{lang === 'ar' ? 'ساكن' : 'Resident'}</span>
+                </div>
+              </div>
             )}
           </div>
 
-          <div className="space-y-4 border-t border-gray-50 dark:border-gray-800 pt-6 transition-colors">
+          <div className="p-8 space-y-10">
             {isEditing ? (
-               <div className="space-y-4">
-                 <InputGroup label="رقم الهاتف" value={editForm.phone} onChange={(v: string) => setEditForm({...editForm, phone: v})} />
-                 <InputGroup label="رقم واتساب" value={editForm.whatsapp || ""} onChange={(v: string) => setEditForm({...editForm, whatsapp: v})} />
-                 <InputGroup label="الوظيفة" value={editForm.job || ""} onChange={(v: string) => setEditForm({...editForm, job: v})} />
-                 <InputGroup label="الرقم القومي" value={editForm.nationalId || ""} onChange={(v: string) => setEditForm({...editForm, nationalId: v})} />
-                 <InputGroup label="الاشتراك الشهري" value={editForm.monthlyFee} type="number" onChange={(v: string) => setEditForm({...editForm, monthlyFee: Number(v)})} />
-                 <div className="flex gap-2 pt-4">
-                    <button onClick={handleSave} className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold">حفظ</button>
-                    <button onClick={() => setIsEditing(false)} className="px-4 bg-gray-100 text-gray-500 rounded-xl">إلغاء</button>
+               <div className="space-y-5">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InputGroup label={lang === 'ar' ? "رقم الهاتف" : "Phone Number"} value={editForm.phone} onChange={(v: string) => setEditForm({...editForm, phone: v})} />
+                    <InputGroup label={lang === 'ar' ? "رقم واتساب" : "WhatsApp Number"} value={editForm.whatsapp || ""} onChange={(v: string) => setEditForm({...editForm, whatsapp: v})} />
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InputGroup label={lang === 'ar' ? "الوظيفة" : "Job/Occupation"} value={editForm.job || ""} onChange={(v: string) => setEditForm({...editForm, job: v})} />
+                    <InputGroup label={lang === 'ar' ? "الرقم القومي" : "National ID"} value={editForm.nationalId || ""} onChange={(v: string) => setEditForm({...editForm, nationalId: v})} />
+                 </div>
+                 <InputGroup label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Fee"} value={editForm.monthlyFee} type="number" onChange={(v: string) => setEditForm({...editForm, monthlyFee: Number(v)})} />
+                 <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-wider pr-1">
+                      {lang === 'ar' ? 'الملاحظات' : 'Notes'}
+                    </label>
+                    <textarea 
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[100px]"
+                      value={editForm.notes || ""}
+                      onChange={e => setEditForm({...editForm, notes: e.target.value})}
+                    />
+                 </div>
+                 <div className="flex gap-3 pt-4">
+                    <button onClick={handleSave} className="flex-2 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all">
+                      {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
+                    </button>
+                    <button onClick={() => setIsEditing(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-4 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                      {t.cancel}
+                    </button>
                  </div>
                </div>
             ) : (
               <>
-                <DetailRow label="رقم الهاتف" value={apartment.phone} />
-                {apartment.whatsapp && <DetailRow label="واتساب" value={apartment.whatsapp} />}
-                {apartment.job && <DetailRow label="الوظيفة" value={apartment.job} />}
-                {apartment.nationalId && <DetailRow label="الرقم القومي" value={apartment.nationalId} />}
-                <DetailRow label="تاريخ السكن" value={apartment.moveInDate} />
-                <DetailRow label="قيمة الاشتراك" value={`${apartment.monthlyFee} ج.م`} />
-                <DetailRow label="إجمالي المسدد" value={`${totalPaid} ج.م`} color="text-green-600 dark:text-green-400" />
-                {settings.lateFeeEnabled && (
-                  <>
-                    <DetailRow label="غرامة التأخير" value={`${calculateLateFees(apartment, settings)} ج.م`} color="text-orange-600 dark:text-orange-400" />
-                    <DetailRow 
-                      label="إجمالي المديونية" 
-                      value={`${Math.max(0, (apartment.monthlyFee * (Math.max(1, differenceInCalendarMonths(new Date(), parseISO(apartment.moveInDate)) + 1))) - totalPaid) + calculateLateFees(apartment, settings)} ج.م`} 
-                      color="text-red-600 dark:text-red-400 font-black" 
-                    />
-                  </>
-                )}
-                <div className="pt-4 mt-4 border-t border-gray-50 dark:border-gray-800 transition-colors">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 block mb-2 font-bold uppercase transition-colors">{t.notes}</span>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800 p-4 rounded-xl transition-colors">{apartment.notes || (lang === 'ar' ? "لا توجد ملاحظات مسجلة" : "No notes recorded")}</p>
-                </div>
+                {/* Contact Section */}
+                <section>
+                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <Phone size={12} className="text-blue-500" />
+                    {lang === 'ar' ? 'معلومات الاتصال' : 'Contact Details'}
+                  </h4>
+                  <div className="space-y-1">
+                    <DetailRow icon={<Phone size={16} />} label={lang === 'ar' ? "الهاتف" : "Phone"} value={apartment.phone} />
+                    {apartment.whatsapp && <DetailRow icon={<MessageSquare size={16} />} label={lang === 'ar' ? "واتساب" : "WhatsApp"} value={apartment.whatsapp} />}
+                  </div>
+                </section>
+
+                {/* Financial Overview */}
+                <section>
+                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <Wallet size={12} className="text-green-500" />
+                    {lang === 'ar' ? 'الملف المالي' : 'Financial Profile'}
+                  </h4>
+                  <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 border border-gray-100 dark:border-gray-800/50 space-y-1">
+                    <DetailRow icon={<CreditCard size={16} />} label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Subscription"} value={`${apartment.monthlyFee} ج.م`} color="text-blue-600 dark:text-blue-400" border={false} />
+                    <DetailRow icon={<CheckCircle2 size={16} />} label={lang === 'ar' ? "إجمالي المسدد" : "Total Paid"} value={`${totalPaid} ج.م`} color="text-green-600 dark:text-green-400" border={false} />
+                    {settings.lateFeeEnabled && (
+                      <>
+                        <DetailRow icon={<AlertCircle size={16} />} label={lang === 'ar' ? "غرامات متراكمة" : "Accumulated Late Fees"} value={`${calculateLateFees(apartment, settings)} ج.م`} color="text-orange-600 dark:text-orange-400" border={false} />
+                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                          <DetailRow 
+                            icon={<Activity size={16} />}
+                            label={lang === 'ar' ? "صافي المديونية" : "Net Debt"} 
+                            value={`${Math.max(0, (apartment.monthlyFee * (Math.max(1, differenceInCalendarMonths(new Date(), parseISO(apartment.moveInDate)) + 1))) - totalPaid) + calculateLateFees(apartment, settings)} ج.م`} 
+                            color="text-red-600 dark:text-red-500 font-black text-lg" 
+                            border={false}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                {/* Profile Section */}
+                <section>
+                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <User size={12} className="text-indigo-500" />
+                    {lang === 'ar' ? 'بيانات الساكن' : 'Resident Profile'}
+                  </h4>
+                  <div className="space-y-1">
+                    {apartment.job && <DetailRow icon={<Briefcase size={16} />} label={t.job || (lang === 'ar' ? "الوظيفة" : "Job")} value={apartment.job} />}
+                    {apartment.nationalId && <DetailRow icon={<IdCard size={16} />} label={lang === 'ar' ? "الرقم القومي" : "National ID"} value={apartment.nationalId} />}
+                    <DetailRow icon={<Calendar size={16} />} label={lang === 'ar' ? "تاريخ السكن" : "Move-in Date"} value={apartment.moveInDate} />
+                  </div>
+                </section>
+
+                {/* Notes Section */}
+                <section className="pt-4">
+                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                    <FileText size={12} className="text-gray-400" />
+                    {lang === 'ar' ? 'ملاحظات إضافية' : 'Additional Notes'}
+                  </h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800/50 min-h-[80px]">
+                    {apartment.notes || (lang === 'ar' ? "لا توجد ملاحظات مسجلة لهذه الوحدة" : "No notes recorded for this unit")}
+                  </p>
+                </section>
               </>
             )}
           </div>
@@ -1557,16 +1864,27 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
   );
 }
 
-function DetailRow({ label, value, color = "text-gray-700" }: any) {
+function DetailRow({ icon, label, value, color = "text-gray-700", border = true }: any) {
   return (
-    <div className="flex justify-between items-center py-2 border-b border-gray-50 dark:border-gray-800 border-dashed last:border-0 transition-colors">
-      <span className="text-gray-400 dark:text-gray-500 text-sm transition-colors">{label}</span>
-      <span className={cn("font-bold transition-colors", color.includes("text-gray-700") ? "text-gray-700 dark:text-gray-200" : color)}>{value}</span>
+    <div className={cn(
+      "flex justify-between items-center py-3 group transition-all",
+      border && "border-b border-gray-50 dark:border-gray-800 border-dashed last:border-0"
+    )}>
+      <div className="flex items-center gap-3">
+        {icon && <span className="text-gray-400 dark:text-gray-600 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">{icon}</span>}
+        <span className="text-gray-400 dark:text-gray-500 text-xs font-bold transition-colors">{label}</span>
+      </div>
+      <span className={cn(
+        "font-black text-sm text-right transition-colors", 
+        color.includes("text-gray-700") ? "text-gray-800 dark:text-gray-200" : color
+      )}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function MonthlyReportView({ apartments, currentMonth, setCurrentMonth, settings, lang, t }: any) {
+function MonthlyReportView({ apartments, emergencyFund, currentMonth, setCurrentMonth, settings, lang, t }: any) {
   const data = apartments.map((apt: Apartment) => {
     const p = apt.payments.find(p => p.month === currentMonth);
     const due = apt.monthlyFee;
@@ -1626,10 +1944,11 @@ function MonthlyReportView({ apartments, currentMonth, setCurrentMonth, settings
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mt-8">
             <ReportStat label="إجمالي المطلوب" value={totals.due} color="text-gray-800 dark:text-gray-100" />
             <ReportStat label="إجمالي المحصل" value={totals.paid} color="text-green-600 dark:text-green-400" />
             <ReportStat label="إجمالي المتأخرات" value={totals.remains} color="text-red-500 dark:text-red-400" />
+            <ReportStat label={lang === 'ar' ? 'صندوق الطوارئ' : 'Emergency Fund'} value={emergencyFund.balance} color="text-amber-600 dark:text-amber-400" />
           </div>
         </div>
 
@@ -1769,11 +2088,11 @@ function DebtsReportView({ apartments, settings, onResetAllDebts, lang, t }: any
                     <Trash2 size={32} />
                   </div>
                   <div className="text-center space-y-2">
-                    <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">تصفير مديونية العقار بالكامل</h3>
+                    <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">تصفير الحسابات بالكامل</h3>
                     <p className="text-gray-500 dark:text-gray-400">
                       هل أنت متاكد من مسح جميع السجلات المالية الحالية؟ 
                       <br />
-                      <span className="text-sm font-medium text-red-500 dark:text-red-400">هذا الإجراء سيمسح جميع المدفوعات المسجلة لجميع الشقق وسيبدأ دورة مالية جديدة من هذا الشهر.</span>
+                      <span className="text-sm font-medium text-red-500 dark:text-red-400">هذا الإجراء سيمسح جميع المدفوعات المسجلة، المصروفات، ورصيد صندوق الطوارئ لبدء باقة حسابات جديدة.</span>
                     </p>
                   </div>
                   <div className="flex gap-4 pt-4">
@@ -1923,11 +2242,11 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
                 <Trash2 size={32} />
               </div>
               <div className="text-center space-y-2">
-                <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">تصفير مديونية العقار بالكامل</h3>
+                <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">تصفير الحسابات بالكامل</h3>
                 <p className="text-gray-500 dark:text-gray-400">
                   هل أنت متاكد من مسح جميع السجلات المالية الحالية؟ 
                   <br />
-                  <span className="text-sm font-medium text-red-500 dark:text-red-400">هذا الإجراء سيمسح جميع المدفوعات المسجلة لجميع الشقق وسيبدأ دورة مالية جديدة من هذا الشهر.</span>
+                  <span className="text-sm font-medium text-red-500 dark:text-red-400">هذا الإجراء سيمسح جميع المدفوعات المسجلة، المصروفات، ورصيد صندوق الطوارئ لبدء دورة مالية جديدة.</span>
                 </p>
               </div>
               <div className="flex gap-4 pt-4">
@@ -2102,13 +2421,13 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
           </div>
 
           <div className="p-6 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
-            <h4 className="font-bold text-red-800 dark:text-red-300 mb-2">تصفير المديونيات</h4>
-            <p className="text-sm text-red-600 dark:text-red-400 mb-4 font-medium">مسح جميع سجلات المدفوعات لجميع السكان لبدء دورة مالية جديدة</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300 mb-2">تصفير الحسابات بالكامل</h4>
+            <p className="text-sm text-red-600 dark:text-red-400 mb-4 font-medium">مسح جميع سجلات المدفوعات، المصروفات، وصندوق الطوارئ لبدء محاسبة جديدة</p>
             <button 
               onClick={() => setShowResetConfirm(true)}
               className="px-6 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all text-sm"
             >
-              <Trash2 size={16} className="inline ml-2" /> تصفير الآن
+              <Trash2 size={16} className="inline ml-2" /> تصفير الكل الآن
             </button>
           </div>
         </div>
@@ -2221,8 +2540,9 @@ function AddApartmentView({ onSave, onCancel, lang, t }: any) {
   );
 }
 
-function ExpensesView({ expenses, onAdd, onDelete, lang, t }: any) {
+function ExpensesView({ expenses, apartments, onAdd, onDelete, lang, t }: any) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [financeTab, setFinanceTab] = useState<'expenses' | 'revenue'>('expenses');
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     amount: 0,
@@ -2233,7 +2553,23 @@ function ExpensesView({ expenses, onAdd, onDelete, lang, t }: any) {
 
   const categories = ["صيانة", "كهرباء", "مياه", "حراسة", "نظافة", "أخرى"];
 
+  const allRevenue = useMemo(() => {
+    const revs: any[] = [];
+    apartments.forEach((apt: Apartment) => {
+      apt.payments.forEach(p => {
+        revs.push({
+          ...p,
+          aptId: apt.id,
+          unitNumber: apt.unitNumber,
+          residentName: apt.residentName
+        });
+      });
+    });
+    return revs.sort((a, b) => new Date(b.paymentDate || b.month).getTime() - new Date(a.paymentDate || a.month).getTime());
+  }, [apartments]);
+
   const totalExpenses = expenses.reduce((acc: number, e: any) => acc + e.amount, 0);
+  const totalRevenue = allRevenue.reduce((acc: number, p: any) => acc + p.amountPaid, 0);
 
   const categoryData = useMemo(() => {
     const data: any[] = [];
@@ -2328,10 +2664,19 @@ function ExpensesView({ expenses, onAdd, onDelete, lang, t }: any) {
     <div className="space-y-8 pb-12 transition-colors">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h2 className="text-3xl font-black text-gray-800 dark:text-gray-100 transition-colors">المصروفات</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">سجل مصروفات العمارة</p>
+          <h2 className="text-3xl font-black text-gray-800 dark:text-gray-100 transition-colors">{lang === 'ar' ? 'الحسابات والمالية' : 'Accounts & Finance'}</h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">{lang === 'ar' ? 'سجل المصروفات والإيرادات' : 'Expenses and revenues log'}</p>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-2xl border border-green-100 dark:border-green-900/20 flex items-center gap-6 flex-1 md:flex-none transition-colors">
+             <div>
+               <span className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase block mb-1">إجمالي الإيرادات</span>
+               <span className="text-2xl font-black text-green-700 dark:text-green-500 transition-colors">{totalRevenue.toLocaleString()} ج.م</span>
+             </div>
+             <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center text-green-600 dark:text-green-400 transition-colors">
+               <TrendingUp size={28} />
+             </div>
+          </div>
           <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 dark:border-red-900/20 flex items-center gap-6 flex-1 md:flex-none transition-colors">
              <div>
                <span className="text-[10px] text-red-600 dark:text-red-400 font-black uppercase block mb-1">إجمالي المصروفات</span>
@@ -2342,13 +2687,28 @@ function ExpensesView({ expenses, onAdd, onDelete, lang, t }: any) {
              </div>
           </div>
           <button 
-            onClick={() => setShowAddForm(true)}
+            onClick={() => { setShowAddForm(true); setFinanceTab('expenses'); }}
             className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl shadow-lg transition-all flex items-center gap-2 font-bold"
           >
             <Plus size={24} />
             <span>إضافة مصروف</span>
           </button>
         </div>
+      </div>
+
+      <div className="flex gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
+        <button 
+          onClick={() => setFinanceTab('expenses')}
+          className={cn("px-6 py-2 rounded-xl text-sm font-black transition-all", financeTab === 'expenses' ? "bg-red-600 text-white shadow-lg shadow-red-900/20" : "text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800")}
+        >
+          {lang === 'ar' ? 'المصروفات' : 'Expenses'} ({expenses.length})
+        </button>
+        <button 
+          onClick={() => setFinanceTab('revenue')}
+          className={cn("px-6 py-2 rounded-xl text-sm font-black transition-all", financeTab === 'revenue' ? "bg-green-600 text-white shadow-lg shadow-green-900/20" : "text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800")}
+        >
+          {lang === 'ar' ? 'الإيرادات' : 'Revenue'} ({allRevenue.length})
+        </button>
       </div>
 
       <AnimatePresence>
@@ -2400,181 +2760,593 @@ function ExpensesView({ expenses, onAdd, onDelete, lang, t }: any) {
           </motion.div>
         )}
       </AnimatePresence>
-      
-      {expenses.length > 0 && (
-        <div className="space-y-8">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
-            <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">تطور إجمالي المصروفات (تراكمي)</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timelineData}>
-                  <defs>
-                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="displayDate" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} 
-                  />
-                  <YAxis hide />
-                  <Tooltip 
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-gray-900 text-white p-4 rounded-xl shadow-xl border border-gray-800 text-right">
-                            <p className="text-[10px] font-black opacity-50 mb-1">{data.date}</p>
-                            <p className="text-sm font-black text-white mb-1">{data.reason}</p>
-                            <p className="text-sm font-black text-red-400">{data.total.toLocaleString()} ج.م</p>
-                            <p className="text-[10px] opacity-70">إجمالي المصروفات التراكمي</p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="total" 
-                    stroke="#ef4444" 
-                    strokeWidth={3}
-                    fillOpacity={1} 
-                    fill="url(#colorTotal)" 
-                    animationDuration={1500}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
-              <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">توزيع المصروفات حسب الفئة</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
-              <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">تطور المصروفات الشهري (حسب الفئة)</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} 
-                    />
-                    <YAxis hide />
-                    <Tooltip 
-                      cursor={{ fill: 'transparent' }}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    />
-                    {categories.map((cat, index) => (
-                      <Bar 
-                        key={cat} 
-                        dataKey={cat} 
-                        stackId="a" 
-                        fill={COLORS[index % COLORS.length]} 
-                        radius={index === categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} 
+      {financeTab === 'expenses' ? (
+        <>
+          {expenses.length > 0 && (
+            <div className="space-y-8">
+              <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
+                <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">تطور إجمالي المصروفات (تراكمي)</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={timelineData}>
+                      <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis 
+                        dataKey="displayDate" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} 
                       />
+                      <YAxis hide />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-gray-900 text-white p-4 rounded-xl shadow-xl border border-gray-800 text-right">
+                                <p className="text-[10px] font-black opacity-50 mb-1">{data.date}</p>
+                                <p className="text-sm font-black text-white mb-1">{data.reason}</p>
+                                <p className="text-sm font-black text-red-400">{data.total.toLocaleString()} ج.م</p>
+                                <p className="text-[10px] opacity-70">إجمالي المصروفات التراكمي</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="total" 
+                        stroke="#ef4444" 
+                        strokeWidth={3}
+                        fillOpacity={1} 
+                        fill="url(#colorTotal)" 
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
+                  <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">توزيع المصروفات حسب الفئة</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {categoryData.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
+                  <h3 className="text-sm font-black text-gray-400 mb-6 uppercase">تطور المصروفات الشهري (حسب الفئة)</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={trendData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} />
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} />
+                        <Legend />
+                        {categories.map((cat, index) => (
+                          <Bar key={cat} dataKey={cat} stackId="a" fill={COLORS[index % COLORS.length]} radius={index === categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
+                <table className="w-full text-right">
+                  <thead className="bg-gray-50 dark:bg-gray-800 transition-colors">
+                    <tr>
+                      <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">{t.date}</th>
+                      <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">{t.reason}</th>
+                      <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">{t.category}</th>
+                      <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">{t.amount}</th>
+                      <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">{t.actions}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                    {expenses.map((exp: Expense) => (
+                      <tr key={exp.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group">
+                        <td className="p-4">
+                          <div className="font-bold text-gray-700 dark:text-gray-200">{exp.date}</div>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-bold text-gray-800 dark:text-gray-100">{exp.reason}</div>
+                          {exp.notes && <div className="text-[10px] text-gray-400 mt-0.5">{exp.notes}</div>}
+                        </td>
+                        <td className="p-4">
+                          <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full text-[10px] font-black uppercase tracking-tighter">
+                            {exp.category || "أخرى"}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-black text-red-600 dark:text-red-400">{exp.amount.toLocaleString()} ج.م</div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <button 
+                            onClick={() => {
+                              if (confirm("هل أنت متأكد من حذف هذا المصروف؟")) {
+                                onDelete(exp.id);
+                              }
+                            }}
+                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
                     ))}
-                  </BarChart>
-                </ResponsiveContainer>
+                  </tbody>
+                </table>
               </div>
             </div>
+          )}
+
+          {expenses.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-gray-900 rounded-3xl border-2 border-dashed border-gray-100 dark:border-gray-800 transition-colors">
+              <TrendingDown size={48} className="text-gray-200 dark:text-gray-700 mb-4" />
+              <p className="text-gray-400 font-bold">لا توجد مصروفات مسجلة حتى الآن</p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
+            <h3 className="p-6 text-sm font-black text-gray-400 uppercase border-b border-gray-50 dark:border-gray-800">سجل الإيرادات (المبالغ المحصلة من الشقق)</h3>
+            <table className="w-full text-right font-sans">
+              <thead className="bg-gray-50 dark:bg-gray-800 transition-colors">
+                <tr>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">التاريخ</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">الشقة</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">عن شهر</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">{t.paymentMethod}</th>
+                  <th className="p-4 text-xs font-black text-gray-400 uppercase tracking-widest">المبلغ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                {allRevenue.map((p: any) => (
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group">
+                    <td className="p-4">
+                      <div className="font-bold text-gray-700 dark:text-gray-200">{p.paymentDate || "غير محدد"}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-black text-gray-800 dark:text-gray-100">شقة {p.unitNumber}</div>
+                      <div className="text-[10px] text-gray-400">{p.residentName}</div>
+                    </td>
+                    <td className="p-4 text-center">
+                      <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl text-[10px] font-black underline underline-offset-4 decoration-2 decoration-blue-200">
+                        {p.month}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-xs text-gray-500 font-bold">{p.paymentMethod}</span>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-black text-green-600 dark:text-green-400">{p.amountPaid.toLocaleString()} ج.م</div>
+                    </td>
+                  </tr>
+                ))}
+                {allRevenue.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-20 text-center text-gray-400 font-bold">لا توجد إيرادات مسجلة حتى الآن</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right font-mono">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-xs font-black uppercase border-b border-gray-100 dark:border-gray-800 transition-colors">
-                <th className="px-6 py-4">التاريخ</th>
-                <th className="px-6 py-4">الفئة</th>
-                <th className="px-6 py-4">سبب الصرف</th>
-                <th className="px-6 py-4">المبلغ</th>
-                <th className="px-6 py-4">ملاحظات</th>
-                <th className="px-6 py-4">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800 transition-colors">
-              {expenses.map((e: any) => (
-                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">{e.date}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg text-[10px] font-black uppercase">
-                      {e.category || "عام"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-black text-gray-800 dark:text-gray-100 transition-colors">{e.reason}</td>
-                  <td className="px-6 py-4 text-red-600 dark:text-red-400 font-black transition-colors">{e.amount.toLocaleString()} ج.م</td>
-                  <td className="px-6 py-4 text-gray-400 dark:text-gray-500 text-xs truncate max-w-[200px]">{e.notes || "-"}</td>
-                  <td className="px-6 py-4">
-                    <button 
-                      onClick={() => onDelete(e.id)}
-                      className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {expenses.length === 0 && (
-                <tr>
-                   <td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-gray-600 bg-gray-50/20 dark:bg-gray-800/10 transition-colors">لا توجد مصروفات مسجلة حالياً.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+function IncomeView({ apartments, expenses, emergencyFund, lang, t }: any) {
+  const currentYear = new Date().getFullYear();
+  
+  const monthlyIncomeData = useMemo(() => {
+    const data = [];
+    for (let m = 0; m < 12; m++) {
+      const monthStr = `${currentYear}-${String(m + 1).padStart(2, '0')}`;
+      const monthLabel = format(new Date(currentYear, m), "MMM", { locale: lang === 'ar' ? ar : enUS });
+      
+      const income = apartments.reduce((acc: number, apt: Apartment) => {
+        return acc + apt.payments
+          .filter(p => p.month === monthStr)
+          .reduce((sum, p) => sum + p.amountPaid, 0);
+      }, 0);
+
+      data.push({ name: monthLabel, income });
+    }
+    return data;
+  }, [apartments, currentYear, lang]);
+
+  const annualIncomeData = useMemo(() => {
+    const data = [];
+    const now = new Date().getFullYear();
+    for (let i = 4; i >= 0; i--) {
+        const year = now - i;
+        const yearStr = year.toString();
+        
+        const income = apartments.reduce((acc: number, apt: Apartment) => {
+            return acc + apt.payments
+                .filter(p => p.month.startsWith(yearStr))
+                .reduce((sum, p) => sum + p.amountPaid, 0);
+        }, 0);
+        
+        data.push({ name: yearStr, income });
+    }
+    return data;
+  }, [apartments]);
+
+  const fundTrendData = useMemo(() => {
+      const transactions = [...emergencyFund.transactions].sort((a, b) => a.date.localeCompare(b.date));
+      const data = [];
+      
+      const monthMap: Record<string, number> = {};
+      let runningBalance = 0;
+      transactions.forEach(tx => {
+          const m = tx.date.slice(0, 7);
+          runningBalance += (tx.type === 'in' ? tx.amount : -tx.amount);
+          monthMap[m] = runningBalance;
+      });
+
+      for (let i = 5; i >= 0; i--) {
+          const d = subMonths(new Date(), i);
+          const m = format(d, "yyyy-MM");
+          const label = format(d, "MMM", { locale: lang === 'ar' ? ar : enUS });
+          
+          let lastBalance = 0;
+          const sortedMonths = Object.keys(monthMap).sort();
+          for(const monthKey of sortedMonths) {
+              if (monthKey <= m) {
+                  lastBalance = monthMap[monthKey];
+              }
+          }
+
+          data.push({ name: label, balance: lastBalance });
+      }
+      return data;
+  }, [emergencyFund, lang]);
+
+  return (
+    <div className="space-y-8" dir={t.dir}>
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-black text-gray-800 dark:text-gray-100 transition-colors">{lang === 'ar' ? 'تقرير الإيرادات' : 'Income Report'}</h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">{lang === 'ar' ? 'تحليل بياني لإيرادات العقار وتدفقاته' : 'Graphical analysis of property income and flows'}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+          <h3 className="text-lg font-black mb-6 flex items-center gap-2 text-gray-800 dark:text-gray-100">
+            <TrendingUp className="text-green-500" />
+            {lang === 'ar' ? 'الإيرادات الشهرية' : 'Monthly Income'} ({currentYear})
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={monthlyIncomeData}>
+                <defs>
+                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#111827', border: 'none', borderRadius: '12px', color: '#fff' }}
+                  itemStyle={{ color: '#22c55e', fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="income" stroke="#22c55e" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+          <h3 className="text-lg font-black mb-6 flex items-center gap-2 text-gray-800 dark:text-gray-100">
+            <BarChart3 className="text-blue-500" />
+            {lang === 'ar' ? 'الإيرادات السنوية' : 'Annual Income'}
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={annualIncomeData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#111827', border: 'none', borderRadius: '12px', color: '#fff' }}
+                />
+                <Bar dataKey="income" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+        <h3 className="text-lg font-black mb-6 flex items-center gap-2 text-gray-800 dark:text-gray-100">
+          <AlertCircle className="text-amber-500" />
+          {lang === 'ar' ? 'نمو صندوق الطوارئ' : 'Emergency Fund Growth'}
+        </h3>
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={fundTrendData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+              <YAxis hide />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#111827', border: 'none', borderRadius: '12px', color: '#fff' }}
+                itemStyle={{ color: '#f59e0b', fontWeight: 'bold' }}
+              />
+              <Line type="monotone" dataKey="balance" stroke="#f59e0b" strokeWidth={4} dot={{ r: 6, fill: '#f59e0b', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
   );
 }
 
-function InputGroup({ label, value, onChange, type = "text" }: any) {
+function EmergencyFundView({ emergencyFund, onUpdateFund, totalIncomes, totalExpenses, netBalance, lang, t }: any) {
+  const [amount, setAmount] = useState<number>(0);
+  const [reason, setReason] = useState("");
+  const [activeAction, setActiveAction] = useState<"transfer" | "deposit" | "withdraw">("transfer");
+
+  const handleAction = () => {
+    if (amount <= 0) return;
+
+    let newBalance = emergencyFund.balance;
+    let type: "in" | "out" = "in";
+    let finalReason = reason;
+
+    if (activeAction === "transfer") {
+      if (amount > netBalance) {
+        alert(lang === 'ar' ? "المبلغ المطلوب تحويله أكبر من الرصيد المتاح" : "Transfer amount exceeds available balance");
+        return;
+      }
+      newBalance += amount;
+      type = "in";
+      finalReason = reason || (lang === 'ar' ? "تحويل من إيرادات المبنى" : "Transfer from building income");
+    } else if (activeAction === "deposit") {
+      newBalance += amount;
+      type = "in";
+      finalReason = reason || (lang === 'ar' ? "إيداع مباشر" : "Direct deposit");
+    } else if (activeAction === "withdraw") {
+      if (amount > emergencyFund.balance) {
+        alert(lang === 'ar' ? "المبلغ المطلوب سحبه أكبر من رصيد الصندوق" : "Withdrawal amount exceeds fund balance");
+        return;
+      }
+      newBalance -= amount;
+      type = "out";
+      finalReason = reason || (lang === 'ar' ? "سحب من الصندوق" : "Withdrawal from fund");
+    }
+
+    const newTransaction = {
+      id: "tx_" + Date.now(),
+      date: new Date().toISOString(),
+      amount: amount,
+      type,
+      reason: finalReason
+    };
+
+    onUpdateFund({
+      ...emergencyFund,
+      balance: newBalance,
+      transactions: [newTransaction, ...emergencyFund.transactions]
+    });
+
+    setAmount(0);
+    setReason("");
+    alert(lang === 'ar' ? "تمت العملية بنجاح" : "Operation successful");
+  };
+
+  return (
+    <div className="space-y-8" dir={t.dir}>
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-black text-gray-800 dark:text-gray-100 transition-colors">{lang === 'ar' ? 'صندوق الطوارئ' : 'Emergency Fund'}</h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">{lang === 'ar' ? 'إدارة المبالغ المخصصة للحالات الطارئة وصيانة العقار الكبرى' : 'Manage funds allocated for emergencies and major property maintenance'}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 rounded-3xl text-white shadow-xl shadow-orange-900/20 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+            <div className="relative z-10 text-right">
+              <span className="text-xs font-black uppercase tracking-widest opacity-80">{lang === 'ar' ? 'الرصيد الحالي للصندوق' : 'Current Fund Balance'}</span>
+              <div className="text-4xl font-black mt-2 mb-1">{emergencyFund.balance.toLocaleString()} ج.م</div>
+              <p className="text-[10px] font-bold opacity-60 tracking-wider">EMERGENCY FUND ACCOUNT</p>
+            </div>
+            <AlertCircle className="absolute bottom-6 left-6 opacity-20" size={48} />
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 space-y-4 text-right transition-colors">
+            <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl mb-4">
+              <button 
+                onClick={() => setActiveAction("transfer")}
+                className={cn(
+                  "flex-1 py-2 text-xs font-black rounded-lg transition-all",
+                  activeAction === "transfer" ? "bg-white dark:bg-gray-700 shadow-sm text-amber-600" : "text-gray-400"
+                )}
+              >
+                {lang === 'ar' ? 'تحويل' : 'Transfer'}
+              </button>
+              <button 
+                onClick={() => setActiveAction("deposit")}
+                className={cn(
+                  "flex-1 py-2 text-xs font-black rounded-lg transition-all",
+                  activeAction === "deposit" ? "bg-white dark:bg-gray-700 shadow-sm text-green-600" : "text-gray-400"
+                )}
+              >
+                {lang === 'ar' ? 'إيداع' : 'Deposit'}
+              </button>
+              <button 
+                onClick={() => setActiveAction("withdraw")}
+                className={cn(
+                  "flex-1 py-2 text-xs font-black rounded-lg transition-all",
+                  activeAction === "withdraw" ? "bg-white dark:bg-gray-700 shadow-sm text-red-600" : "text-gray-400"
+                )}
+              >
+                {lang === 'ar' ? 'سحب' : 'Withdraw'}
+              </button>
+            </div>
+
+            <h3 className="text-lg font-black border-b border-gray-50 dark:border-gray-800 pb-4 mb-4 text-gray-800 dark:text-gray-100">
+              {activeAction === "transfer" && (lang === 'ar' ? 'تحويل من إيرادات المبنى' : 'Transfer from Building Income')}
+              {activeAction === "deposit" && (lang === 'ar' ? 'إيداع نقدي مباشر' : 'Direct Cash Deposit')}
+              {activeAction === "withdraw" && (lang === 'ar' ? 'سحب من الصندوق' : 'Withdraw from Fund')}
+            </h3>
+
+            <div className="space-y-4">
+               <div className="space-y-1 text-right">
+                 <label className="text-[10px] uppercase font-black text-gray-400 dark:text-gray-500 tracking-wider pr-1">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
+                 <input 
+                    type="number" 
+                    value={amount || ""} 
+                    onChange={(e) => setAmount(Number(e.target.value))}
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 font-bold text-gray-800 dark:text-gray-100 transition-all font-mono"
+                 />
+                 {activeAction === "transfer" && (
+                   <p className="text-[9px] text-gray-400 dark:text-gray-500 font-bold transition-colors">* {lang === 'ar' ? 'الرصيد المتاح حالياً:' : 'Available balance:'} {netBalance.toLocaleString()} ج.م</p>
+                 )}
+                 {activeAction === "withdraw" && (
+                   <p className="text-[9px] text-gray-400 dark:text-gray-500 font-bold transition-colors">* {lang === 'ar' ? 'رصيد الصندوق:' : 'Fund balance:'} {emergencyFund.balance.toLocaleString()} ج.م</p>
+                 )}
+               </div>
+               <InputGroup 
+                  label={lang === 'ar' ? "السبب / الملاحظات" : "Reason / Notes"} 
+                  value={reason} 
+                  onChange={setReason} 
+                  placeholder={
+                    activeAction === "withdraw" 
+                    ? (lang === 'ar' ? "مثال: إصلاح ماسورة مياه عمومية" : "e.g. Repair of main water pipe")
+                    : (lang === 'ar' ? "أدخل سبب العملية هنا" : "Enter reason here")
+                  }
+               />
+               <button 
+                onClick={handleAction}
+                disabled={amount <= 0}
+                className={cn(
+                  "w-full py-4 text-white rounded-2xl font-black shadow-lg transition-all disabled:opacity-50 disabled:grayscale",
+                  activeAction === "withdraw" ? "bg-red-500 shadow-red-900/20 hover:bg-red-600" : 
+                  activeAction === "deposit" ? "bg-green-600 shadow-green-900/20 hover:bg-green-700" :
+                  "bg-amber-500 shadow-amber-900/20 hover:bg-amber-600"
+                )}
+               >
+                 {activeAction === "transfer" && (lang === 'ar' ? 'تأكيد التحويل الآن' : 'Confirm Transfer Now')}
+                 {activeAction === "deposit" && (lang === 'ar' ? 'تأكيد الإيداع' : 'Confirm Deposit')}
+                 {activeAction === "withdraw" && (lang === 'ar' ? 'تأكيد السحب' : 'Confirm Withdrawal')}
+               </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col transition-colors">
+          <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center transition-colors">
+            <h3 className="text-xl font-black text-gray-800 dark:text-gray-100">{lang === 'ar' ? 'سجل معاملات الصندوق' : 'Fund Transaction History'}</h3>
+            <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/10 text-amber-600 rounded-lg border border-amber-100 dark:border-amber-900/20">
+              <Clock size={16} />
+              <span className="text-xs font-black">{emergencyFund.transactions.length} {lang === 'ar' ? 'عملية' : 'Transactions'}</span>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto max-h-[600px] font-mono">
+            <table className="w-full text-right">
+              <thead>
+                <tr className="bg-gray-50/50 dark:bg-gray-800/30 text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">
+                  <th className="px-8 py-4">{lang === 'ar' ? 'التاريخ' : 'DATE'}</th>
+                  <th className="px-8 py-4">{lang === 'ar' ? 'السبب' : 'REASON'}</th>
+                  <th className="px-8 py-4">{lang === 'ar' ? 'النوع' : 'TYPE'}</th>
+                  <th className="px-8 py-4">{lang === 'ar' ? 'المبلغ' : 'AMOUNT'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                {emergencyFund.transactions.map((tx: any) => (
+                  <tr key={tx.id} className="group hover:bg-gray-50/30 dark:hover:bg-gray-800/20 transition-colors">
+                    <td className="px-8 py-5 text-[11px] font-bold text-gray-400 dark:text-gray-500">{format(parseISO(tx.date), "dd / MM / yyyy - HH:mm")}</td>
+                    <td className="px-8 py-5 text-sm font-bold text-gray-700 dark:text-gray-200">{tx.reason}</td>
+                    <td className="px-8 py-5">
+                      <span className={cn(
+                        "text-[10px] font-black px-2 py-1 rounded-md uppercase",
+                        tx.type === 'in' ? "bg-green-50 dark:bg-green-900/20 text-green-600" : "bg-red-50 dark:bg-red-900/20 text-red-600"
+                      )}>
+                        {tx.type === 'in' ? (lang === 'ar' ? 'إيداع' : 'IN') : (lang === 'ar' ? 'سحب' : 'OUT')}
+                      </span>
+                    </td>
+                    <td className={cn(
+                      "px-8 py-5 text-lg font-black",
+                      tx.type === 'in' ? "text-green-600" : "text-red-500"
+                    )}>
+                      {tx.type === 'in' ? '+' : '-'}{tx.amount.toLocaleString()} <span className="text-[10px] font-bold opacity-60">ج.م</span>
+                    </td>
+                  </tr>
+                ))}
+                {emergencyFund.transactions.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-8 py-20 text-center text-gray-400 dark:text-gray-600 bg-gray-50/10 dark:bg-gray-800/10 transition-colors">
+                      < RotateCcw size={48} className="mx-auto mb-4 opacity-5" />
+                      <p className="font-bold text-lg">{lang === 'ar' ? 'لا توجد معاملات مسجلة حتى الآن' : 'No transactions recorded yet'}</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InputGroup({ label, value, onChange, type = "text", className = "", placeholder = "" }: any) {
   return (
     <div className="space-y-1">
       <label className="text-[10px] uppercase font-black text-gray-400 dark:text-gray-500 tracking-wider pr-1 transition-colors">{label}</label>
       <input 
         type={type} 
         value={value} 
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-gray-700 dark:text-gray-100 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600"
+        className={cn(
+          "w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-gray-700 dark:text-gray-100 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600",
+          className
+        )}
       />
     </div>
   );
-}function PaymentModal({ apartment, onClose, onSave, lang, t }: any) {
+}
+
+function PaymentModal({ apartment, onClose, onSave, lang, t }: any) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [amountPaid, setAmountPaid] = useState(apartment.monthlyFee);
   const [method, setMethod] = useState(PaymentMethod.CASH);

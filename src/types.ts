@@ -48,6 +48,19 @@ export interface Expense {
   notes?: string;
 }
 
+export interface EmergencyFundTransaction {
+  id: string;
+  date: string;
+  amount: number;
+  type: "in" | "out";
+  reason: string;
+}
+
+export interface EmergencyFund {
+  balance: number;
+  transactions: EmergencyFundTransaction[];
+}
+
 export interface BuildingSettings {
   buildingName: string;
   address: string;

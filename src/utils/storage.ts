@@ -9,6 +9,7 @@ import { SAMPLE_APARTMENTS, DEFAULT_SETTINGS, DATA_VERSION } from "../constants"
 const STORAGE_KEY = "building_manager_data";
 const SETTINGS_KEY = "building_manager_settings";
 const EXPENSES_KEY = "building_manager_expenses";
+const EMERGENCY_FUND_KEY = "building_manager_emergency_fund";
 const VERSION_KEY = "building_manager_version";
 
 export const storage = {
@@ -37,6 +38,15 @@ export const storage = {
     localStorage.setItem(EXPENSES_KEY, JSON.stringify(data));
   },
   
+  getEmergencyFund: (): { balance: number, transactions: any[] } => {
+    const data = localStorage.getItem(EMERGENCY_FUND_KEY);
+    return data ? JSON.parse(data) : { balance: 0, transactions: [] };
+  },
+
+  saveEmergencyFund: (data: { balance: number, transactions: any[] }) => {
+    localStorage.setItem(EMERGENCY_FUND_KEY, JSON.stringify(data));
+  },
+  
   getSettings: (): BuildingSettings => {
     const settings = localStorage.getItem(SETTINGS_KEY);
     if (!settings) {
@@ -53,5 +63,8 @@ export const storage = {
   clearAll: () => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SETTINGS_KEY);
+    localStorage.removeItem(EXPENSES_KEY);
+    localStorage.removeItem(EMERGENCY_FUND_KEY);
+    localStorage.removeItem(VERSION_KEY);
   }
 };
