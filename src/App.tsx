@@ -21,6 +21,8 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   RotateCcw,
   Search,
   MessageCircle,
@@ -1407,6 +1409,8 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
   const [isEditing, setIsEditing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [financialExpanded, setFinancialExpanded] = useState(true);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [editForm, setEditForm] = useState(apartment);
   
   // Filtering state
@@ -1602,56 +1606,61 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Info Card */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl shadow-gray-200/50 dark:shadow-black/20 border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors relative">
-          {!isEditing && (
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="absolute top-6 left-6 p-3 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-2xl transition-all shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 z-10"
-              title="تعديل البيانات"
-            >
-              <SettingsIcon size={20} />
-            </button>
-          )}
-
-          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-center text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-400/20 rounded-full -ml-12 -mb-12 blur-xl" />
-            
-            <div className="w-24 h-24 rounded-3xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center mx-auto mb-6 font-black text-4xl shadow-xl border border-white/30 relative z-10">
-              {apartment.unitNumber}
-            </div>
-            {isEditing ? (
-              <div className="space-y-4 text-right">
-                <InputGroup label={lang === 'ar' ? "اسم الساكن" : "Resident Name"} value={editForm.residentName} onChange={(v: string) => setEditForm({...editForm, residentName: v})} className="bg-white/10 border-white/20 text-white placeholder-white/50" />
-              </div>
-            ) : (
-              <div className="relative z-10">
-                <h3 className="text-2xl font-black mb-1">{apartment.residentName}</h3>
-                <div className="flex items-center justify-center gap-2 text-blue-100/80 font-bold text-sm">
-                  <Building2 size={14} />
-                  <span>{lang === 'ar' ? 'الطابق' : 'Floor'} {apartment.floor}</span>
-                  <span className="w-1 h-1 bg-blue-100/40 rounded-full" />
-                  <span>{lang === 'ar' ? 'ساكن' : 'Resident'}</span>
-                </div>
-              </div>
+        {/* Left Column: Details & Profile */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Main Profile Card */}
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors relative">
+            {!isEditing && (
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="absolute top-6 left-6 p-3 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-2xl transition-all shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 z-10"
+                title="تعديل البيانات"
+              >
+                <SettingsIcon size={20} />
+              </button>
             )}
-          </div>
 
-          <div className="p-8 space-y-10">
-            {isEditing ? (
-               <div className="space-y-5">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-center text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-400/20 rounded-full -ml-12 -mb-12 blur-xl" />
+              
+              <div className="w-24 h-24 rounded-3xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center mx-auto mb-6 font-black text-4xl shadow-xl border border-white/30 relative z-10">
+                {apartment.unitNumber}
+              </div>
+              {isEditing ? (
+                <div className="relative z-10 space-y-4">
+                  <InputGroup 
+                    label={lang === 'ar' ? "اسم الساكن" : "Resident Name"} 
+                    value={editForm.residentName} 
+                    onChange={(v: string) => setEditForm({...editForm, residentName: v})} 
+                    className="bg-white/10 border-white/20 text-white placeholder-white/50" 
+                  />
+                </div>
+              ) : (
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black mb-1">{apartment.residentName}</h3>
+                  <div className="flex items-center justify-center gap-2 text-blue-100/80 font-bold text-sm">
+                    <Building2 size={14} />
+                    <span>{lang === 'ar' ? 'الطابق' : 'Floor'} {apartment.floor}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6">
+              {isEditing ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputGroup label={lang === 'ar' ? "رقم الهاتف" : "Phone Number"} value={editForm.phone} onChange={(v: string) => setEditForm({...editForm, phone: v})} />
                     <InputGroup label={lang === 'ar' ? "رقم واتساب" : "WhatsApp Number"} value={editForm.whatsapp || ""} onChange={(v: string) => setEditForm({...editForm, whatsapp: v})} />
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputGroup label={lang === 'ar' ? "الوظيفة" : "Job/Occupation"} value={editForm.job || ""} onChange={(v: string) => setEditForm({...editForm, job: v})} />
                     <InputGroup label={lang === 'ar' ? "الرقم القومي" : "National ID"} value={editForm.nationalId || ""} onChange={(v: string) => setEditForm({...editForm, nationalId: v})} />
-                 </div>
-                 <InputGroup label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Fee"} value={editForm.monthlyFee} type="number" onChange={(v: string) => setEditForm({...editForm, monthlyFee: Number(v)})} />
-                 <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-wider pr-1">
+                  </div>
+                  <InputGroup label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Fee"} value={editForm.monthlyFee} type="number" onChange={(v: string) => setEditForm({...editForm, monthlyFee: Number(v)})} />
+                  <div className="space-y-2 text-right">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pr-1">
                       {lang === 'ar' ? 'الملاحظات' : 'Notes'}
                     </label>
                     <textarea 
@@ -1659,86 +1668,146 @@ function ApartmentDetailView({ apartment, settings, onBack, onRegisterPayment, o
                       value={editForm.notes || ""}
                       onChange={e => setEditForm({...editForm, notes: e.target.value})}
                     />
-                 </div>
-                 <div className="flex gap-3 pt-4">
-                    <button onClick={handleSave} className="flex-2 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all">
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button onClick={handleSave} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all">
                       {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
                     </button>
                     <button onClick={() => setIsEditing(false)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-4 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                       {t.cancel}
                     </button>
-                 </div>
-               </div>
-            ) : (
-              <>
-                {/* Contact Section */}
-                <section>
-                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <Phone size={12} className="text-blue-500" />
-                    {lang === 'ar' ? 'معلومات الاتصال' : 'Contact Details'}
-                  </h4>
-                  <div className="space-y-1">
-                    <DetailRow icon={<Phone size={16} />} label={lang === 'ar' ? "الهاتف" : "Phone"} value={apartment.phone} />
-                    {apartment.whatsapp && <DetailRow icon={<MessageSquare size={16} />} label={lang === 'ar' ? "واتساب" : "WhatsApp"} value={apartment.whatsapp} />}
                   </div>
-                </section>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Basic Info Section */}
+                  <section>
+                    <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <User size={12} className="text-indigo-500" />
+                      {lang === 'ar' ? 'بيانات الساكن' : 'Resident Information'}
+                    </h4>
+                    <div className="space-y-1">
+                      {apartment.job && <DetailRow icon={<Briefcase size={16} />} label={lang === 'ar' ? "الوظيفة" : "Occupation"} value={apartment.job} />}
+                      {apartment.nationalId && <DetailRow icon={<IdCard size={16} />} label={lang === 'ar' ? "الرقم القومي" : "National ID"} value={apartment.nationalId} />}
+                      <DetailRow icon={<Calendar size={16} />} label={lang === 'ar' ? "تاريخ السكن" : "Move-in Date"} value={apartment.moveInDate} />
+                    </div>
+                  </section>
 
-                {/* Financial Overview */}
-                <section>
-                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <Wallet size={12} className="text-green-500" />
-                    {lang === 'ar' ? 'الملف المالي' : 'Financial Profile'}
-                  </h4>
-                  <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 border border-gray-100 dark:border-gray-800/50 space-y-1">
-                    <DetailRow icon={<CreditCard size={16} />} label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Subscription"} value={`${apartment.monthlyFee} ج.م`} color="text-blue-600 dark:text-blue-400" border={false} />
-                    <DetailRow icon={<CheckCircle2 size={16} />} label={lang === 'ar' ? "إجمالي المسدد" : "Total Paid"} value={`${totalPaid} ج.م`} color="text-green-600 dark:text-green-400" border={false} />
-                    {settings.lateFeeEnabled && (
-                      <>
-                        <DetailRow icon={<AlertCircle size={16} />} label={lang === 'ar' ? "غرامات متراكمة" : "Accumulated Late Fees"} value={`${calculateLateFees(apartment, settings)} ج.م`} color="text-orange-600 dark:text-orange-400" border={false} />
-                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-                          <DetailRow 
-                            icon={<Activity size={16} />}
-                            label={lang === 'ar' ? "صافي المديونية" : "Net Debt"} 
-                            value={`${Math.max(0, (apartment.monthlyFee * (Math.max(1, differenceInCalendarMonths(new Date(), parseISO(apartment.moveInDate)) + 1))) - totalPaid) + calculateLateFees(apartment, settings)} ج.م`} 
-                            color="text-red-600 dark:text-red-500 font-black text-lg" 
-                            border={false}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </section>
-
-                {/* Profile Section */}
-                <section>
-                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <User size={12} className="text-indigo-500" />
-                    {lang === 'ar' ? 'بيانات الساكن' : 'Resident Profile'}
-                  </h4>
-                  <div className="space-y-1">
-                    {apartment.job && <DetailRow icon={<Briefcase size={16} />} label={t.job || (lang === 'ar' ? "الوظيفة" : "Job")} value={apartment.job} />}
-                    {apartment.nationalId && <DetailRow icon={<IdCard size={16} />} label={lang === 'ar' ? "الرقم القومي" : "National ID"} value={apartment.nationalId} />}
-                    <DetailRow icon={<Calendar size={16} />} label={lang === 'ar' ? "تاريخ السكن" : "Move-in Date"} value={apartment.moveInDate} />
-                  </div>
-                </section>
-
-                {/* Notes Section */}
-                <section className="pt-4">
-                  <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                    <FileText size={12} className="text-gray-400" />
-                    {lang === 'ar' ? 'ملاحظات إضافية' : 'Additional Notes'}
-                  </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800/50 min-h-[80px]">
-                    {apartment.notes || (lang === 'ar' ? "لا توجد ملاحظات مسجلة لهذه الوحدة" : "No notes recorded for this unit")}
-                  </p>
-                </section>
-              </>
-            )}
+                  {/* Contact Section */}
+                  <section>
+                    <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <Phone size={12} className="text-blue-500" />
+                      {lang === 'ar' ? 'معلومات الاتصال' : 'Contact Details'}
+                    </h4>
+                    <div className="space-y-1">
+                      <DetailRow icon={<Phone size={16} />} label={lang === 'ar' ? "الهاتف" : "Phone"} value={apartment.phone} />
+                      {apartment.whatsapp && <DetailRow icon={<MessageSquare size={16} />} label={lang === 'ar' ? "واتساب" : "WhatsApp"} value={apartment.whatsapp} />}
+                    </div>
+                  </section>
+                </div>
+              )}
+            </div>
           </div>
+
+          {!isEditing && (
+            <>
+              {/* Financial Profile Card (Collapsible) */}
+              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+                <button 
+                  onClick={() => setFinancialExpanded(!financialExpanded)}
+                  className="w-full p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-xl">
+                      <Wallet size={18} />
+                    </div>
+                    <span className="font-black text-gray-800 dark:text-gray-100 uppercase text-xs tracking-widest">{lang === 'ar' ? 'الملف المالي' : 'Financial Profile'}</span>
+                  </div>
+                  {financialExpanded ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+                </button>
+                
+                <AnimatePresence>
+                  {financialExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-6 pb-6 space-y-1">
+                        <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 border border-gray-100 dark:border-gray-800/50 space-y-1">
+                          <DetailRow icon={<CreditCard size={16} />} label={lang === 'ar' ? "الاشتراك الشهري" : "Monthly Fee"} value={`${apartment.monthlyFee} ج.م`} color="text-blue-600 dark:text-blue-400" border={false} />
+                          <DetailRow icon={<CheckCircle2 size={16} />} label={lang === 'ar' ? "إجمالي المسدد" : "Total Paid"} value={`${totalPaid} ج.م`} color="text-green-600 dark:text-green-400" border={false} />
+                          {settings.lateFeeEnabled && (
+                            <>
+                              <DetailRow icon={<AlertCircle size={16} />} label={lang === 'ar' ? "غرامات متراكمة" : "Late Fees"} value={`${calculateLateFees(apartment, settings)} ج.م`} color="text-orange-600 dark:text-orange-400" border={false} />
+                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <DetailRow 
+                                  icon={<Activity size={16} />}
+                                  label={lang === 'ar' ? "صافي المديونية" : "Net Debt"} 
+                                  value={`${Math.max(0, (apartment.monthlyFee * (Math.max(1, differenceInCalendarMonths(new Date(), parseISO(apartment.moveInDate)) + 1))) - totalPaid) + calculateLateFees(apartment, settings)} ج.م`} 
+                                  color="text-red-600 dark:text-red-500 font-black text-lg" 
+                                  border={false}
+                                />
+                              </div>
+                            </>
+                          )}
+                          {!settings.lateFeeEnabled && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                              <DetailRow 
+                                icon={<Activity size={16} />}
+                                label={lang === 'ar' ? "صافي المديونية" : "Net Debt"} 
+                                value={`${Math.max(0, (apartment.monthlyFee * (Math.max(1, differenceInCalendarMonths(new Date(), parseISO(apartment.moveInDate)) + 1))) - totalPaid)} ج.م`} 
+                                color="text-red-600 dark:text-red-500 font-black text-lg" 
+                                border={false}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Notes Card (Collapsible) */}
+              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+                <button 
+                  onClick={() => setNotesExpanded(!notesExpanded)}
+                  className="w-full p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gray-50 dark:bg-gray-800 text-gray-500 rounded-xl">
+                      <FileText size={18} />
+                    </div>
+                    <span className="font-black text-gray-800 dark:text-gray-100 uppercase text-xs tracking-widest">{lang === 'ar' ? 'ملاحظات إضافية' : 'Additional Notes'}</span>
+                  </div>
+                  {notesExpanded ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+                </button>
+                
+                <AnimatePresence>
+                  {notesExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-6 pb-6">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800/50 min-h-[80px] text-right">
+                          {apartment.notes || (lang === 'ar' ? "لا توجد ملاحظات مسجلة لهذه الوحدة" : "No notes recorded for this unit")}
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Payment History */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+        {/* Payment History Column */}
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
           <div className="p-6 border-b border-gray-50 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-center transition-colors">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
