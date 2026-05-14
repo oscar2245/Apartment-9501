@@ -85,7 +85,9 @@ import {
   exportToPDF, 
   exportBuildingToExcel, 
   exportApartmentToExcel, 
-  importFromExcel 
+  importFromExcel,
+  exportDataToJSON,
+  importFromJSON
 } from "./utils/exports";
 import { translations, Language } from "./translations";
 
@@ -477,6 +479,31 @@ export default function App() {
     }
   };
 
+  const handleExportJSON = () => {
+    const allData = {
+      apartments,
+      expenses,
+      emergencyFund,
+      settings,
+      version: "1.1",
+      exportDate: new Date().toISOString()
+    };
+    exportDataToJSON(allData, `${settings.buildingName}_نسخة_احتياطية_${format(new Date(), "yyyy-MM-dd")}`);
+  };
+
+  const handleImportJSON = async (file: File) => {
+    try {
+      const data = await importFromJSON(file);
+      if (data.apartments) setApartments(data.apartments);
+      if (data.expenses) setExpenses(data.expenses);
+      if (data.emergencyFund) setEmergencyFund(data.emergencyFund);
+      if (data.settings) setSettings(data.settings);
+      alert(lang === 'ar' ? "تم استيراد جميع البيانات بنجاح" : "All data imported successfully");
+    } catch (err) {
+      alert(lang === 'ar' ? "خطأ في قراءة ملف النسخة الاحتياطية" : "Error reading backup file");
+    }
+  };
+
   return (
     <div className={cn(
       "flex min-h-screen transition-colors duration-300", 
@@ -823,6 +850,9 @@ export default function App() {
                 onResetDebts={resetAllDebts}
                 onBulkUpdateFees={updateAllFees}
                 onImportExcel={handleImportExcel}
+                onImportJSON={handleImportJSON}
+                onExportJSON={handleExportJSON}
+                onExportPDF={() => exportToPDF(apartments, currentMonth, settings)}
                 onExportAll={() => exportBuildingToExcel(apartments, settings)}
                 onClear={() => {
                   if(confirm("هل أنت متأكد من مسح جميع البيانات؟")) {
@@ -2272,7 +2302,7 @@ function DebtsReportView({ apartments, settings, onResetAllDebts, lang, t }: any
   );
 }
 
-function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImportExcel, onExportAll, onClear, lang, t }: any) {
+function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImportExcel, onImportJSON, onExportJSON, onExportPDF, onExportAll, onClear, lang, t }: any) {
   const [form, setForm] = useState(settings);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showFeeUpdateConfirm, setShowFeeUpdateConfirm] = useState(false);
@@ -2286,6 +2316,13 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
       } catch (err) {
         alert("خطأ في قراءة ملف Excel");
       }
+    }
+  };
+
+  const handleJSONImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onImportJSON(file);
     }
   };
 
@@ -2491,7 +2528,7 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
 
           <div className="p-6 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
             <h4 className="font-bold text-red-800 dark:text-red-300 mb-2">تصفير الحسابات بالكامل</h4>
-            <p className="text-sm text-red-600 dark:text-red-400 mb-4 font-medium">مسح جميع سجلات المدفوعات، المصروفات، وصندوق الطوارئ لبدء محاسبة جديدة</p>
+            <p className="text-sm text-red-600 dark:text-red-400 mb-4 font-medium">مسح جميع سجلات المدفوعات، المصروفات، ورصيد صندوق الطوارئ لبدء محاسبة جديدة</p>
             <button 
               onClick={() => setShowResetConfirm(true)}
               className="px-6 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all text-sm"
@@ -2499,11 +2536,28 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
               <Trash2 size={16} className="inline ml-2" /> تصفير الكل الآن
             </button>
           </div>
+
+          <div className="p-6 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-900/20">
+            <h4 className="font-bold text-indigo-800 dark:text-indigo-300 mb-2">{lang === 'ar' ? 'النسخة الاحتياطية (JSON)' : 'Data Backup (JSON)'}</h4>
+            <p className="text-sm text-indigo-600 dark:text-indigo-400 mb-4 font-medium">{lang === 'ar' ? 'تصدير أو استيراد جميع بيانات العقار كملف نسخة احتياطية متكامل' : 'Export or import all building data as a complete backup file'}</p>
+            <div className="flex gap-3">
+              <button 
+                onClick={onExportJSON}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all text-xs"
+              >
+                تصدير النسخة
+              </button>
+              <label className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-xl font-bold cursor-pointer hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-all text-xs border border-indigo-200 dark:border-indigo-800">
+                استيراد النسخة
+                <input type="file" accept=".json" className="hidden" onChange={handleJSONImport} />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="flex flex-col md:flex-row justify-between items-center bg-gray-900 dark:bg-gray-800 text-white p-6 rounded-2xl gap-6 transition-colors font-mono">
-         <div className="flex gap-3">
+         <div className="flex flex-wrap gap-3">
            <button 
             onClick={() => onSave(form)}
             className="px-8 py-3 bg-blue-600 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/40"
@@ -2512,9 +2566,15 @@ function SettingsView({ settings, onSave, onResetDebts, onBulkUpdateFees, onImpo
            </button>
            <button 
             onClick={onExportAll}
-            className="px-8 py-3 bg-gray-800 dark:bg-gray-700 rounded-xl font-bold hover:bg-gray-700 transition-all"
+            className="px-6 py-3 bg-gray-800 dark:bg-gray-700 rounded-xl font-bold hover:bg-gray-700 transition-all border border-gray-700 flex items-center gap-2"
            >
-             تصدير قاعدة البيانات (Excel)
+             <Download size={18} /> تصدير (Excel)
+           </button>
+           <button 
+            onClick={onExportPDF}
+            className="px-6 py-3 bg-red-800 dark:bg-red-900/40 rounded-xl font-bold hover:bg-red-700 transition-all border border-red-700 flex items-center gap-2"
+           >
+             <Printer size={18} /> تصدير (PDF)
            </button>
          </div>
          <button 
